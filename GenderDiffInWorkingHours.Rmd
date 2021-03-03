@@ -1,0 +1,957 @@
+---
+title: "Gender Differences in Working Hours"
+author: "2604299H"
+date: "1/1/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+library(haven)
+library(tidyverse)
+library(labelled)
+library(dplyr)
+library(readr)
+library(ggthemes)
+library(knitr)
+library(forcats)
+library(lmtest)
+library(car)
+library(sandwich)
+library(miceadds)
+```
+# Content
+|  1.  Introduction
+|    1.1 Background
+|    1.2 Research Method
+|    1.3 Model design
+|  2.  Dataset preparetion
+|    2.1 Dataset
+|    2.2 Select variable
+|    2.3 Clean dataset
+|    2.4 Convert variable
+|    2.5 Check dataset
+|  3. Understand the dataset
+|    3.1 Statistical description 
+|    3.2 Visualizaiton of base information
+|    3.3 Exam each independent variable and its sampling error 
+|  4 Build multiple linear regression model
+|  5 Test multiple linear regression model 
+|    5.1 Assumption1: The model is correctly specified
+|    5.2 Assumption2: The residuals have the same variance and are independent from one another
+|    5.3 Assumption3: There are no linear relationship between independent variables
+|    5.4 Assumption4: The independent variables are fixed and measured without error
+
+# 1.  Introduction
+### 1.1 Background
+
+Due to the closure of schools and daycare services due to the COVID-19 pandemic, the gender gap in working hours in the United States from February 2020 to April 2020 has increased by 20% to 50%, and mothers with children have reduced working hours Four to five times [1]. According to think tanks, the gender gap between paid and unpaid work has narrowed since the mid-1970s, but the gap is still large [4]. In all developed countries, women (especially mothers) have less paid working hours than their spouses [4]. Moreover, the survey showed that women did not have more leisure time because of fewer work hours; on the contrary, they had less leisure time [2].
+Working hours affect work experience, which in turn affects wage levels. According to [3], the correlation between women's working hours and subsequent promotions will be stronger than men's. So the work hour gap may be the reason for the lower average salary.
+This kind of gap may be that women's time may be more occupied by unpaid work due to the difference in labor division in the family.
+
+### 1.2 Research Method
+
+This report tried to address the question by taking data that is representative of the population of interest to construct multiple linear regression model .
+The depended variable should be work hour. The key independent variable is gender.Other independent variable are other influencital factors on work hour.
+
+
+### 1.3 Model design
+
+
+This part will introduce how to choose variables and their measurement. 
+There are plenty of potential explanations for work hours. 
+Being male or female may influence industry type choice, level of education, and other characteristics that also impact work hours.
+However, this analysis focuses on the direct impact of gender on work hours.
+It is initial to account for this indirect impact of work hours to avoid omitted variable bias.
+It is also essential to consider another direct impact of work hours, like age, region.
+Considering the current data set and previous theory, choose age, region, major, marital status, and industry to explain work hours except for gender.
+The model will measure the strength of the impact of each factor on work hours.
+Work hours should be measured by the total actual work time per week of an individual.
+
+
+# 2.  Dataset preparetion
+### 2.1 Dataset
+The dataset used in research is The UK Time Diary Study 2014 - 2015 (tidy data), which focuses on time use.
+The dataset does not contain the entire population, but a sample of them, include people who report work hours and older than 16 years old.
+It is proved that the dataset is representative so that the result can be generalized from the sample into the UK population.
+One file of the dataset provides 
+statistics summarized time information extracted from the activity schedule calculated by the Centre for Time Use Research (CTUR) team, 
+so the quality of the actual work hour per week is excepted to be good.
+The unit of analysis is individual.
+Every individual has many features as variables, including time use and personal characteristics.
+
+```{r}
+list_origin <- read.delim("uktus15_individual.tab")
+dim(list_origin)
+```
+
+The dataset contains 11421 obs. of  603 variables.
+
+### 2.2 Select variable
+
+In order to avoid overcomplicating things with unnecessary data, this research uses simple or grouped classifications of some variables
+
+* serial (ratio) : household number
+* dtotac (ratio) : Total actual work hours in all jobs and businesses per week
+* DMSex (nominal) : Sex of respondent
+* DVAge (ratio) : Age in years
+* dukcntr (ordinal) : Country of Usual Residence (UK)
+* dsic (ordinal) : SIC 2007 industry divisions (grouped)
+* dmarsta (ordinal) : Marital status
+* dhiqual(ordinal) : Highest qualification
+* dsoc (ordinal) : SOC 2010 Major groups
+
+```{r}
+list <- select(list_origin,serial,dtotac,DMSex,DVAge,dukcntr,dsic,dmarsta,dhiqual,dsoc)
+```
+
+### 2.3 Clean dataset
+Filter un-useful and missing values 
+
+**Work Hours**
+Restrict work hour > 0, only consider economically active people.
+
+```{r, echo=TRUE}
+nrow(list) 
+list <- filter(list, dtotac > 0)
+nrow(list) 
+```
+
+
+According to the Office of National Statistics, the UK population in 2014 is around 64.6 million, employment-population in 2014 is around 30 million. Therefore, 50% of the observation is expected to lose; they are economically inactive people, like students, household wives, people seeking a job, retired, and sick.
+From 11421 to 3738, we lose 67% of the observation.
+Most of the removed observations are the observations with the variable value of -1. According to the document, -1 means "item not applicable." It may include inactive people mentioned above, people who cannot accurately measure the working hours (e.g., some consultants), people who can not distinguish work and break time (e.g., some content creators), etc.
+The cleaning process also removes the observation with a value of 0 (working time is 0); they may be on vacation during the survey.
+And -8 (Don't know); -7 (Interview not achieved), -9 (No answer/refused).
+Therefore, the dataset is representative from this perspective. The reduction is acceptable and has no essential influence on research.
+Then restrict people to work less than 112 hours per week. Since too long work hour is very likely to be a statistical error.
+
+```{r, echo=TRUE}
+list <- filter(list, dtotac < 112)
+nrow(list) 
+```
+
+**Age**
+
+People are expected to retire at 65.
+
+```{r, echo=TRUE}
+list <- filter(list, DVAge < 65)
+nrow(list)  
+```
+
+**Industry/Marital status/Education/Major group**
+Exclude negative numbers 
+
+```{r, echo=TRUE}
+list <- filter(list, dsic > 0)
+list <- filter(list, dmarsta > 0)
+list <- filter(list, dhiqual > 0)
+list <- filter(list, dsoc > 0)
+nrow(list)  
+```
+
+There is little difference that can be ignored. The reason may be that these variables are closely related to the dependent variable-work hour handled above.
+After cleaning，dataset still, have enough observation, and they are representative. 
+
+### 2.4 Convert variable
+Convert ordinal data into factors to let numbers represent categories.
+Rename numeric variable to make it easier to understand.
+
+```{r, echo=FALSE}
+list <- mutate(list, workHour = dtotac)
+list <- mutate(list, age = DVAge)
+
+list <- mutate(list, industry = factor(dsic,
+                                           labels = c("Agriculture, forestry and fishing", "Manufacturing", 
+                                                      "Energy and water supply", "Construction", "Distribution, hotels and restaurants", 
+                                                      "Transport and communication", "Banking and finance", 
+                                                      "Public admin, education and health", "Other services")))
+list <- mutate(list, gender = factor(DMSex,
+                                           labels = c("Male", "Female")))
+list <- mutate(list, region = factor(dukcntr,
+                                               labels = c("England", "Wales", 
+                                                          "Scotland", "Northern Ireland")))
+list <- mutate(list, maritalStatus = factor(dmarsta,
+                                                  labels = c("Single, never married", "Married/cohabitating", 
+                                                             "Divorced/widowed")))
+list <- mutate(list, education = factor(dhiqual,
+                                                  labels = c( "Degree or higher", 
+                                                              "Higher education",
+                                                              "A level or equivalent",
+                                                              "Secondary",
+                                                              "Other")))
+
+list <- mutate(list, majorGroup = factor(dsoc,
+                                        labels = c( "Managers", 
+                                                    "PProfessionals",
+                                                    "Assoc. professionals",
+                                                    "Administrative",
+                                                    "Skilled Trade",
+                                                    "Caring & Leisure",
+                                                    "Sales & cust services",
+                                                    "Machine Operatives",
+                                                    "Elementary occupations")))
+list <- select(list,serial,workHour,age,industry,gender,region,maritalStatus,education,majorGroup)
+
+```
+
+### 2.5 Check dataset
+```{r, echo=TRUE}
+glimpse(list)
+levels(list$industry)
+levels(list$region)
+levels(list$maritalStatus)
+levels(list$majorGroup)
+levels(list$education)
+```
+
+# 3. Understand the dataset
+### 3.1 Statistical description 
+
+**Central tendency of continous single variables**
+
+Typical value of work hours (ratio variable)
+```{r, echo=FALSE}
+summary(list$workHour) 
+```
+Typical value of age (ratio variable)
+```{r, echo=FALSE}
+summary(list$age)
+```
+Those two variables have no clear outliers.
+
+**Central tendency of univariate variables**
+
+The difference in work hour between men and women
+```{r, echo=FALSE}
+list %>% group_by(gender) %>% summarize(mean(workHour))
+```
+
+Use cross tabulation to explore the relationship between gender and other independent variable which indirectly influenc work hour.=
+```{r, echo=FALSE}
+table(list$industry,list$gender) %>% prop.table(1)
+table(list$education,list$gender) %>% prop.table(1)
+table(list$majorGroup,list$gender) %>% prop.table(1)
+```
+
+We can see clear difference in industry, major group propotion between man and women, but little difference in education.
+
+### 3.2 Visualizaiton of base information
+
+**Distribution of dependent variable——work hour** 
+As the dependent variable is continuous, this research use histogram to show its distribution.
+
+```{r, echo=FALSE}
+list %>%
+  filter(workHour < 90) %>%
+  ggplot(aes(workHour)) +
+  geom_histogram(binwidth = 5) +
+  labs( title = "Distribution of Work Hour",
+        subtitle = "Sample of people work less than 90 hours per week",
+        x = "Work Hour (h)",
+        y = "Density",
+        caption = "Source: United Kingdom Time Use Survey, 2014-2015") +
+  theme_classic() +
+  geom_rug()
+```
+
+Very little people work longer than 90 hours per week,so adjust the upper limit of working hours to 90 hours. Than draw the plot.
+It can be seen that the work hour is close to a normal distribution. 
+There is a clusterings of observations around the mean (main peak).
+The farther away from the peak, the shorter the working hours. That is in line with common sense that people who work too long and too short are a minority.
+
+
+**Distribution of work hour by gender**
+
+```{r, echo=FALSE}
+list %>%
+  filter(workHour <= 90) %>%
+  ggplot(aes(workHour)) +
+  geom_density(aes(fill = gender), alpha  = 0.2) +
+  labs( title = "Distribution of Work Hour by gender",
+        subtitle = "Sample of people work less than 90 hours per week",
+        x = "Work Hour (h)",
+        y = "Density",
+        caption = "Source: United Kingdom Time Use Survey, 2014-2015") +
+  theme_classic() +
+  geom_rug() +
+  theme(legend.title = element_blank())
+```
+
+It shows the relationship between gender and work hour.
+The work hour peak of men is a little larger than that of women, in consistant with descriptive statistics that for the average work hour for men were higher.
+The work hour distribution of men and that of women are skewed, but the overlap part is nearly normal distributied.
+Women are clustered at the lower end of the distribution
+Long work hours are dominated by the man
+The working hours of females start from the peak and decrease slowly in the direction with less time, and decrease steeply in the direction with more time. The opposite is true for males.
+Female's work time distribution is more flatter。
+This reflects that in addition to the normal working hours of most people, there are more women with shorter working hours, and the opposite is true for men.
+
+
+**Distribution of work hour by industry and gender**
+
+```{r, echo=FALSE}
+list %>%
+  mutate(industry = fct_reorder(industry, workHour,median,.desc = TRUE)) %>%
+  filter(workHour <= 90) %>%
+  ggplot(aes(industry,workHour)) +
+  geom_boxplot(aes(fill = gender)) +
+  labs( title = "Distribution of Work Hour by industry and gender",
+        subtitle = "Sample of people work less than 90 hours per week",
+        x = "Industry",
+        y = "Work Hour (h/week)",
+        caption = "Source: United Kingdom Time Use Survey, 2014-2015") +
+  theme_classic() +
+  theme(legend.title = element_blank()) +
+  coord_flip()
+```
+
+There is a large variation in work hours between men and women.
+In every industry, men work longer than women.
+The largest disparity in work hour between men and women appears in industry of distribution, hotels ans restaurants.
+The means of work hour of man among industries are similar. But that of women varies a lot.
+
+
+
+### 3.3 Exam each independent variable and its sampling error 
+In-depth study of the effects of several influencing factors of work hour on it, in preparation for the establishment of multiple linear regression model.
+
+**3.3.1 Work hour versus gender**
+
+```{r, echo=FALSE}
+list %>% group_by(gender) %>% summarize(mean(workHour),var(workHour), sd(workHour)) %>%
+  knitr::kable(col.names = c('Gender', 'Mean Work Hour','Var','Std.Dev'))
+list %>%
+  ggplot(aes(gender,workHour)) +
+  geom_boxplot() +
+  labs( title = "Distribution of Work Hour by Gender",
+        x = "Gender",
+        y = "Work Hour (h/week)",
+        caption = "Source: United Kingdom Time Use Survey, 2014-2015") +
+  theme_classic() +
+  coord_flip()
+```
+
+Mean work hour varies between the gender.
+There are more variation of work hour for women and the distribution is less compressed, which may because a large amount of women do short-time job (Quartile is very small).
+So, it may cause pure heteroscedasticity.
+
+Exam sampling error
+
+* Null hypothesis:
+
+The average work hour between men and women in population is equal
+
+* Alternative hypothesis:
+
+The average work hour between men and women in population is not equal
+
+* Test statistics
+
+t-value: where the coefficient could be zero in the population.
+Reject the null hypothesis if the probability (p-value) is equal to or less than 0.05. 
+
+```{r, echo=FALSE}
+t.test(workHour~gender,data = list)
+```
+
+* Level of significance
+
+The t-value is 19.35, p-value < 0.05. 
+If the null hypothesis is true, then there is a probability of 0.00000 of observing a p-value as or more extreme than 19.35. 
+We reject null hypothesis and think the average work hour of men is statistically significantly different from that of women. 
+
+
+**3.3.2 Work hour versus highest qualification**
+```{r, echo=FALSE}
+list %>% group_by(education) %>% summarize(mean(workHour),var(workHour), sd(workHour)) %>%
+  knitr::kable(col.names = c('Highest Qualification', 'Mean Work Hour','Var','Std.Dev'))
+
+list %>%
+  mutate(education = fct_reorder(education, workHour,median,.desc = TRUE)) %>%
+  ggplot(aes(education,workHour)) +
+  geom_boxplot() +
+  labs( title = "Distribution of Work Hour by Highest Qualification",
+        x = "Highest Qualification",
+        y = "Work Hour (h/week)",
+        caption = "Source: United Kingdom Time Use Survey, 2014-2015") +
+  theme_classic() +
+  coord_flip()
+```
+Mean work hour varies with the education level.
+Disparity of work hour among higher education, A level or equivalent and Secondary is very little.
+There are more variation of work hour for workers with higher education level, which may because people with lower education level start to work 
+Earlier to do some short-time work, making the distribution less compressed.
+But higher education level people tend to do stable full-time job generally.
+There are different degrees of compression of work hour distribution among education level, which may couse pure heteroscedasticity.
+
+Exam sampling error
+
+* Null hypothesis:
+
+The mean work hour is equal across the education groups
+
+* Alternative hypothesis:
+
+At least one of the education groups mean work hour is different from that the others.
+
+* Test statistics
+
+f-value: compare the variation among the groups within the variation within the groups. If the variation among the groups is larger, the groups are important.
+
+```{r, echo=FALSE}
+aov(formula = workHour~education, data = list) %>% summary()
+```
+* level of significance
+
+According to f-value and its p-value, hypothesis can be rejected. Education level does explain a statistically significant portion of variation in work hours.
+
+**3.3.3 Work hour versus industry**
+```{r, echo=FALSE}
+list %>% group_by(industry) %>% summarize(mean(workHour),var(workHour), sd(workHour)) %>%
+  knitr::kable(col.names = c('Industry', 'Mean Work Hour','Var','Std.Dev'))
+list %>%
+  mutate(industry = fct_reorder(industry, workHour,median,.desc = TRUE)) %>%
+  ggplot(aes(industry,workHour)) +
+  geom_boxplot() +
+  labs( title = "Distribution of Work Hour by Induatry",
+        x = "Industry",
+        y = "Work Hour (h/week)",
+        caption = "Source: United Kingdom Time Use Survey, 2014-2015") +
+  theme_classic() +
+  coord_flip()
+```
+Mean work hour varies with the industry,
+Average work hour in some industry are similar, such as Manufacturing ,and Energy and water supply.
+There are more variation of work hour for workers in some industry, like Agriculture and forestry and fishing, Distribution, hotels and restaurants,
+Public admin, education and health, since work hour of these kind of job are flexible, causing much variation.
+Distribution of work hour in some industry are more compressed, like Energy and water supply, Banking and finance where people have more stable work time.
+So there may be pure heteroscedasticity.
+
+
+Exam sampling error
+
+* Null hypothesis:
+
+The mean work hour is equal across the industry groups
+
+* Alternative hypothesis:
+
+At least one of the industry groups mean work hour is different from that the others.
+
+* test statistics
+
+f-value
+```{r, echo=FALSE}
+lm(formula = workHour~industry, data = list) %>% summary()
+```
+
+* Level of significance
+
+According to f-value and its p-value, hypothesis can be rejected. Industry groups does explain a statistically significant portion of variation in work hours
+
+
+
+
+**3.3.4 Work hours versus major group**
+
+```{r, echo=FALSE}
+list %>% group_by(majorGroup) %>% summarize(mean(workHour),var(workHour),sd(workHour)) %>%
+  knitr::kable(col.names = c('Major Group', 'Mean Work Hour','Var','Std.Dev'))
+list %>%
+  mutate(majorGroup = fct_reorder(majorGroup, workHour,median,.desc = TRUE)) %>%
+  ggplot(aes(majorGroup,workHour)) +
+  geom_boxplot() +
+  labs( title = "Distribution of Work Hour by MajorGroup",
+        x = "MajorGroup",
+        y = "Work Hour (h/week)",
+        caption = "Source: United Kingdom Time Use Survey, 2014-2015") +
+  theme_classic() +
+  coord_flip()
+```
+
+Mean work hour varies with the major Group,
+There are more variation of work hour for workers in some major group, 
+like Caring & Leisure, Elementary occupations(mainly require the use of hand-held tools and often some physical effort).
+Their mean work hour are relatively shorter. People in that major are not likely to have stable work time.
+The smallest variation appears at administrative, since this major often have fixed working hours.
+So this may cause pure heteroscedasticity.
+
+
+Exam sampling error
+
+* Null hypothesis:
+
+The mean work hour is equal across the industry groups
+
+* Alternative hypothesis:
+
+At least one of the industry groups mean work hour is different from that the others.
+* test statistics
+
+f-value
+```{r, echo=FALSE}
+aov(formula = workHour~majorGroup, data = list) %>% summary()
+```
+
+* level of significance
+
+According to f-value and its p-value, hypothesis can be rejected. Major groups does explain a statistically significant portion of variation in work hours.
+
+**3.3.5 Work hours versus region**
+```{r, echo=FALSE}
+list %>% group_by(region) %>% summarize(mean(workHour),var(workHour),sd(workHour)) %>%
+  knitr::kable(col.names = c('Country of UK', 'Mean Work Hour','Var','Std.Dev'))
+list %>%
+  mutate(maritalStatus = fct_reorder(region, workHour,median,.desc = TRUE)) %>%
+  ggplot(aes(region,workHour)) +
+  geom_boxplot() +
+  labs( title = "Distribution of Work Hour by region",
+        x = "Region",
+        y = "Work Hour (h/week)",
+        caption = "Source: United Kingdom Time Use Survey, 2014-2015") +
+  theme_classic() +
+  coord_flip()
+```
+
+Mean work hour varies with the industry.
+Some industry are similar, such as Agriculture, forestry and fishing, and manufacturing
+
+Exam sampling error
+
+* Null hypothesis:
+
+The mean work hour is equal across the industry groups
+
+* Alternative hypothesis:
+
+At least one of the industry groups mean work hour is different from that the others.
+
+* test statistics
+
+f-value
+```{r, echo=FALSE}
+aov(formula = workHour~region, data = list) %>% summary()
+```
+
+* level of significance
+
+According to f-value and its p-value, hypothesis can be rejected. Regions does explain a statistically significant portion of variation in work hours.
+According to 1528/1528+696320 = 0.002， it can only explain 0.2% of the work hour variation. It is not a considerable amount, so exclude the variable. 
+
+**3.3.6 Work hours versus maritalStatus**
+
+```{r, echo=FALSE}
+list %>% group_by(maritalStatus) %>% summarize(mean(workHour), var(workHour),sd(workHour)) %>%
+  knitr::kable(col.names = c('Country of UK', 'Mean Work Hour','Var','Std.Dev'))
+list %>%
+  mutate(maritalStatus = fct_reorder(maritalStatus, workHour,median,.desc = TRUE)) %>%
+  ggplot(aes(maritalStatus,workHour)) +
+  geom_boxplot() +
+  labs( title = "Distribution of Work Hour by marital status",
+        x = "Marital status",
+        y = "Work Hour (h/week)",
+        caption = "Source: United Kingdom Time Use Survey, 2014-2015") +
+  theme_classic() +
+  coord_flip()
+```
+
+Mean work hour varies with the marital status.
+The variations of different marital status are similar, so it is unlikely to cause pure heteroscedasticity.
+
+
+Exam sampling error
+
+* Null hypothesis:
+
+The mean work hour is equal across the industry groups
+
+* Alternative hypothesis:
+
+At least mean work hour of one of the marital status is different from that of the others.
+
+* test statistics
+
+f-value
+```{r, echo=FALSE}
+aov(formula = workHour~maritalStatus, data = list) %>% summary()
+```
+* level of significance
+
+According to f-value and its p-value, hypothesis can be rejected. Marital status does explain a statistically significant portion of variation in work hours.
+
+
+
+**3.3.7 Work hour versus age**
+
+```{r, echo=FALSE}
+list %>% 
+  ggplot(aes(age,workHour)) +
+  geom_jitter(alpha = 0.2) + 
+  labs( title = "Work hour versus age",
+            x = "Age",
+            y = "Work Hour (h/week)",
+            caption = "Source: United Kingdom Time Use Survey, 2014-2015") +
+  theme_classic() 
+```
+
+There is not a clear pattern.People between 25 and 50 years old have some outliers who work long hours. Because this age group is in better physical condition, they are more likely to spend more time at work.
+Then explore the relationship between age and work hour
+```{r, echo=FALSE}
+cor.test(list$workHour,list$age)
+```
+
+The r-value is 0.06, so there is a very weak relationship between work hour and age. 即存在趋势总体上随着年龄增长，工作时间变长。
+Exam sampling error
+
+* Null hypothesis:
+
+Correlated coefficient for age and work hour in population is equal to 0.
+
+* Alternative hypothesis:
+
+Correlated coefficient is not equal to 0.
+
+* test statistic methods
+
+t-value is 3.6, and p-value is less than 0.05, so hypothesis is rejected. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 4 Build multiple linear regression model
+Use spatial to general (start with what we believe is important and add to it) method to construct model.
+
+### 4.1 Gender
+
+Begin with dependent variable and key independent variale
+```{r, echo=FALSE}
+lm(workHour~gender,data = list) %>% summary()
+```
+
+Women work around 8.6 hours per week less than than men.
+The impact is statistically significant.
+Gender accounts for about 9.6% of the variations in work hour.
+
+### 4.2 Add education group
+```{r, echo=FALSE}
+lm(workHour~gender+education,data = list) %>% summary()
+```
+
+People tend to work longer with higher education qualification.
+Controlling the education level, man work 8.8 hours longer than women per week.
+The work hour gap between men and women is larger, possibilly because women have relatively higher education qualification.
+Now the work hour variation is explained 11.3%.
+
+### 4.3 Add major group
+```{r, echo=FALSE}
+lm(workHour~gender+education+majorGroup,data = list) %>% summary()
+```
+
+Some of the major group is not statistically significant, like Professionals, Skilled Trade, compare to Managers.
+Other major group are statistically significant, like administrative, Sales&custom service and elementary occupations.
+People in that major work less.
+And the work hour gap between gender is smaller, which means women tend to have that kind of major.
+Now the model accounts for about 17.3% of the variations in work hour.
+But controlling major group makes the education level statistically insignificant, according to cross-tabulate.
+```{r, echo=FALSE}
+table(list$majorGroup,list$education) %>% prop.table(1)
+```
+
+
+### 4.4 Add marital status
+```{r, echo=FALSE}
+lm(workHour~gender+education+majorGroup+maritalStatus,data = list) %>% summary()
+```
+
+And the work hour gap between gender don't change much, so as to other independent variables above, 
+which means marital status don't have clear relationship with independent variables above.
+Marital status explains statistically significant proportion of variations in work hour.
+Married/cohabitating people tend to work longer than single people and people never married.
+Divorced/widowed people tend to work much longer than single people and people never married.
+Now the model accounts for about 17.6% of the variations in work hour.
+
+### 4.5 Add industry
+```{r, echo=FALSE}
+lm(workHour~gender+education+majorGroup+maritalStatus+industry,data = list) %>% summary()
+```
+
+Majority of the industry groups are statistically insignificant.
+Now the model accounts for about 18.7% of the variations in work hour.
+
+### 4.6 Age
+```{r, echo=FALSE}
+lm(workHour~gender+education+majorGroup+maritalStatus+industry+age,data = list) %>% summary()
+```
+
+Age is not statistically insignificant for work hour variations
+But according to the theory, they are related. So explore other relationship in the next.
+Since whether the residuals follow normal distribution has not been checked, we should not trust p-value totally. So, keep the variable.
+
+### 4.7 Region
+```{r, echo=FALSE}
+lm(workHour~gender+education+majorGroup+maritalStatus+industry+age+region, data = list) %>% summary()
+```
+
+Region is not statistically significant. Since whether the residuals follow normal distribution has not been checked, we should not trust p-value totally. So, keep the variable.Now the model accounts for about 18.8% of the variations in work hour.
+
+
+
+# 5 Test multiple linear regression model 
+Assume the data are representative for the population
+#Then discuss 4 assumptions in Peter Kennedy's :a guide to econometrics" to refine model.
+
+### 5.1 Assumption1: The model is correctly specified
+
+**5.1.1 Checking model for omitted variable bias**
+
+Focus on the effect of gender on working hours, that is to explore if two people are same in other characteristics except gender, will they have the same work hour.
+Control all variables that determine work hour and vary by sex. These research consider industry, education and major group.
+The variables are not complete. There are other explainations not included in the model (e.g., self-employed/employee).
+So, there are still omitted variable bias.
+
+**5.1.2 Checking model for outliers**
+
+Some outliers highly impact paramaters, which makes model not correctly specified.
+Have cleaned the data. So it is not expected to appear two much outliers.
+Now use Residuals vs Leverage for main regression model to figure out how influential a point is.
+
+```{r, echo=FALSE}
+list %>% lm(workHour~gender+education+majorGroup+maritalStatus+industry+age+region, data = .) %>% plot(which = 5)
+```
+
+It is showed that some outliers appear and they have large values of residuals but none of them is highly influential. So dont remove.
+
+**5.1.3 Checking model for functional form**
+
+The only ratio independent variable in model is age. The model shows that there is not a linear pattern between age and work hour.
+According to visualizaiton part, many long work hour observations appear at people who are 25-50 years old.
+Consider changing the relationship between age and work hour to age = |age-A| which means the working hours are the longest at the age of A, and reach the peak. T
+he working hours of longer than A and shorter than A decrease with the increase of the distance to A.
+
+Evaluatethe refined model:
+
+*R-squared*
+
+```{r, echo=FALSE}
+list %>% lm(workHour~gender+education+majorGroup+maritalStatus+industry+age+region, data = .) %>% summary()  
+list %>% lm(workHour~gender+education+majorGroup+maritalStatus+industry+abs(age-40)+region, data = .) %>% summary()  
+```
+
+Compare their R-squared: 18.7% and 19.39%. Refined model explains more variations in work hour.
+
+*RESET test: detect structure in residuals*
+
+```{r, echo=FALSE}
+list %>% lm(workHour~gender+education+majorGroup+maritalStatus+industry+age+region, data = .) %>% resettest()
+list %>% lm(workHour~gender+education+majorGroup+maritalStatus+industry+abs(age-40)+region, data = .) %>% resettest()
+```
+
+p-value is 6.157e-06 and 0.000124.
+Reject the null hypothesis which means there is structure in residuals and there is a strong indication that the model has misspecification of some sort.
+But the refined model is better.
+
+*Residual verses fitted plot: find non-linear patterns and problem*
+
+```{r, echo=FALSE}
+list %>% lm(workHour~gender+education+majorGroup+maritalStatus+industry+age+region, data = .) %>% plot(which = 1)
+list %>% lm(workHour~gender+education+majorGroup+maritalStatus+industry+abs(age-40)+region, data = .) %>%  plot(which = 1)
+```
+
+Red line is close to the doted line and it's curved slightly. So, there is no clear non-linear pattern.
+There are some long work hour people where the model substantial under estimate their work hour (outliers).
+the points clustered more tightly around the zero-line for low fitted values. The model performs better at shorter work hour.
+The points are more spread out for higher fitted values. The estimate has more variation at longer work hour. Espectially more serious overprediction.
+
+### 5.2 Assumption2: The residuals have the same variance and are independent from one another
+**5.2.1 Checking heteroscedasticity**
+
+Points in Residual verses fitted plot are not evenly spread, but looks slightly like a funnel shape, there may be heteroscedasticity.
+The potential reason might be misspecification which has been proved to exist above.
+The other reason is pure heteorosedasticity.The candidate in model are gender, education, industry, major group, according to statistical description in 3.
+Besides people in the same household may be related in some characteristics, like region, which may cause pure heteorosedasticity. 
+Now Use Breusch-Pagan test (does independent variables help explain variance in the residuals) to check heteroscedasticity quantitatively.
+
+```{r, echo=FALSE}
+list %>% lm(workHour~gender+education+majorGroup+maritalStatus+industry+region+abs(age-40), data = .) %>% bptest()
+
+```
+
+p-value is 0.1076, > 0.05. Null hypothesis (the variance of residuals is consistant) cannot be rejected, 
+so there is no strong indication that the model exhibits heteroscedasticity (including pure heteroscedasticity). 
+So there is no need to present robust standard error to see which variable should be excluded.
+
+
+**5.2.2 Checking distribution of residuals**
+
+Use QQ-plot to check it as a matter of degree
+
+```{r, echo=FALSE}
+list %>% lm(workHour~gender+education+majorGroup+maritalStatus+industry+abs(age-40)+region, data = .) %>% plot(which = 2)
+```
+
+At the lower end of the distribution, points are close to the dotted line; at the higher end of the distribution, points are far away.
+Residuals are not following normal distribution.
+
+Now use logarithmic transformation to try to solve issues above. (dependent variable has no zeros).A semi-log regression
+
+```{r, echo=FALSE}
+list %>% lm(log(workHour)~gender+education+majorGroup+maritalStatus+industry+abs(age-40)+region, data = .) %>% summary()
+```
+
+RESET test for the semi-log regression
+
+```{r, echo=FALSE}
+list %>% lm(log(workHour)~gender+education+majorGroup+maritalStatus+industry+abs(age-40)+region, data = .) %>% resettest()
+
+```
+
+Residuals versus fitted plot of the semi-log regression
+
+```{r, echo=FALSE}
+list %>% lm(log(workHour)~gender+education+majorGroup+maritalStatus+industry+abs(age-40)+region, data = .) %>% plot(which = 1)
+
+```
+
+BP-test of the semi-log regression
+
+```{r, echo=FALSE}
+list %>% lm(log(workHour)~gender+education+majorGroup+maritalStatus+industry+abs(age-40)+region, data = .) %>% bptest()
+
+```
+
+QQ-plot of the the semi-log regression
+
+```{r, echo=FALSE}
+list %>% lm(log(workHour)~gender+education+majorGroup+maritalStatus+industry+abs(age-40)+region, data = .) %>% plot(which = 2)
+
+```
+
+All test shows that the semi-log regression is less robust than the origin model.
+
+**5.2.3 Checking whether residuals are independent from one another**
+
+Knowing the residual of an observation should not be helpful to predict residual of another observation.
+However, the Dataset are collected by household, the observation from the same household are likely to have similar characteristics.
+That may against the assumption.
+THe potential problem the model has with lack of independence in residuals is that standard errors are calculated incorrectly.
+So use the clustered robust standard errors 
+(let residuals be clustered within household, assume the residuals within the household are related; between the household are not related)
+
+```{r, echo=FALSE}
+list %>% lm.cluster(data = .,workHour~gender+education+majorGroup+maritalStatus+region+industry+abs(age-40),cluster = "serial") %>%summary()
+
+```
+There is not much difference. So there is no sign that the standard errors are calculated incorrectly and that the model lacks of independence in residuals.
+
+
+### 5.3 Assumption 3: There are no linear relationship between independent variables
+ 
+Use Variance Inflation Factor(VIF) to check how much the variance of the coefficient estimate is being inflated by multicollinearity
+
+```{r, echo=FALSE}
+list %>% lm(log(workHour)~gender+education+majorGroup+maritalStatus+industry+region+abs(age-40), data = .) %>% vif()
+
+```
+
+There are some multicollinearity #There is no indication that multicollinearity is a problem.
+
+
+### 5.4 Assumption4: The independent variables are fixed and measured without error
+There is not any independent variables clearly determined by work hour. This research will not consider endogenous relationship.
+
+
+Continue to check independent variables to try to refine model.
+It is include because work hour across countries in the world are different[].It is excepted that they are different across regions in UK (no evidence).
+But the region variable is not statistically significant.
+Now try to exclude it.
+
+```{r, echo=FALSE}
+list %>% lm(workHour~gender+education+majorGroup+maritalStatus+industry+abs(age-40), data = .) %>% summary()
+
+```
+
+RESET test for the semi-log regression
+
+```{r, echo=FALSE}
+list %>% lm(workHour~gender+education+majorGroup+maritalStatus+industry+abs(age-40), data = .) %>% resettest()
+
+```
+
+Residuals versus fitted plot of the semi-log regression
+
+```{r, echo=FALSE}
+list %>% lm(workHour~gender+education+majorGroup+maritalStatus+industry+abs(age-40), data = .) %>% plot(which = 1)
+
+```
+
+BP-test of the semi-log regression
+
+```{r, echo=FALSE}
+list %>% lm(workHour~gender+education+majorGroup+maritalStatus+industry+abs(age-40), data = 
+.) %>% bptest()
+
+```
+
+QQ-plot of the the semi-log regression
+
+```{r, echo=FALSE}
+list %>% lm(workHour~gender+education+majorGroup+maritalStatus+industry+abs(age-40), data = .) %>% plot(which = 2)
+```
+
+It is showed that the new model is less robust than original model. So Containing region variable makes sense.
+
+One category of marital status variable is not statistically significant. But it can influence work hour in previous research[]. So it won't be combine.
+Some categories of education variable is not statistically significant. But the classification is in order and cannot be combined randomly。
+Some categories of industry variable is not statistically significant. And the classification has no order. Now try to reclassify it.
+Since the first 5 categories are more rely on physical labor, so try to combine them to increase efficiency.
+("Agriculture, forestry and fishing", "Manufacturing","Energy and water supply","Construction")
+
+```{r, echo=TRUE}
+list %>% mutate(industry = fct_collapse(industry, "Agriculture/Forestry and fishing/Manufacturing/Energy and water supply/Construction" = 
+                                          c ("Agriculture, forestry and fishing","Manufacturing","Energy and water supply","Construction"))) %>%
+  lm(workHour~gender+education+majorGroup+maritalStatus+region+industry+abs(age-40), data = .) %>%resettest()
+list %>% mutate(industry = fct_collapse(industry, "Agriculture/Forestry and fishing/Manufacturing/Energy and water supply/Construction" = 
+                                          c ("Agriculture, forestry and fishing","Manufacturing","Energy and water supply","Construction"))) %>%
+lm(workHour~gender+education+majorGroup+maritalStatus+region+industry+abs(age-40), data = .) %>%bptest()
+```
+
+It is showed that the new model is less robust than original model. So keep the original model.
+The original model is:
+
+```{r, echo=FALSE}
+list %>% lm(workHour~gender+education+majorGroup+maritalStatus+region+industry+abs(age-40), data = .) %>% summary()
+```
+
+
+
+
+
+
+
+
+
+
+The final model shows that female on average work 7 hours shorter than male per week, when account for education level, major group, marital status, region, industry and age. The work hour variation can be explained by these factors and other things, like time unnecessary occupied by other things, health status and so on. Although having some limitations, the model is relatively robust. The model is stable, because during the research, after changing the standard error calculation, combining categories of a variable, excluding variables.The result do not have much difference.
+
+
+
+[1]https://onlinelibrary.wiley.com/doi/abs/10.1111/gwao.12506
+
+[2]https://www.ons.gov.uk/economy/nationalaccounts/satelliteaccounts/articles/leisuretimeintheuk/2015
+
+[3]http://ftp.iza.org/dp10454.pdf
+
+[4]https://www.theguardian.com/uk-news/2020/jul/28/total-working-hours-now-near-equal-for-uk-men-and-women
